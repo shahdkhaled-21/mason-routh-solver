@@ -1,0 +1,12 @@
+{
+  "nodes": ["R", "A", "B", "C"],
+  "edges": [
+    {"from": "R", "to": "A", "gain": "1"},
+    {"from": "A", "to": "B", "gain": "2"},
+    {"from": "B", "to": "C", "gain": "3"},
+    {"from": "B", "to": "A", "gain": "-1"},
+    {"from": "A", "to": "C", "gain": "4"}
+  ],
+  "source": "R",
+  "sink": "C"
+}
