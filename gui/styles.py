@@ -485,6 +485,17 @@ QScrollBar::handle:horizontal:hover {{
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0px;
 }}
+
+/* the empty track around the handle (otherwise Qt draws a striped pattern) */
+QScrollBar::add-page, QScrollBar::sub-page {{
+    background: none;
+}}
+
+/* top-left corner square of tables (otherwise it stays white) */
+QTableCornerButton::section {{
+    background-color: {p['mantle']};
+    border: none;
+}}
 """
 
 VELVET_DUSK_QSS = generate_qss(DARK_PALETTE)

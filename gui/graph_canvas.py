@@ -160,7 +160,7 @@ class GraphCanvas(QGraphicsView):
         self.setBackgroundBrush(QBrush(CANVAS_BG))
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
-        self.setMinimumHeight(260)
+        self.setMinimumHeight(170)   # small enough for short laptop screens; grows to fill space
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
