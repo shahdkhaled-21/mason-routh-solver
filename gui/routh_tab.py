@@ -76,14 +76,13 @@ class RouthTab(QWidget):
 
         # Interactive parameter slider row
         slider_row = QHBoxLayout()
-        slider_label = QLabel("Interactive Gain Tuning:")
-        slider_label.setStyleSheet("font-weight:600; color:#CBA6F7;")
+        self.slider_label = slider_label = QLabel("Interactive Gain Tuning:")
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, 200)   # K: 0.0 to 20.0
         self.slider.setValue(40)       # K = 4.0
         self.slider.valueChanged.connect(self._on_slider_changed)
         self.slider_val_label = QLabel("K = 4.0")
-        self.slider_val_label.setStyleSheet("font-family:Consolas; font-weight:bold; color:#A6E3A1; min-width:60px;")
+        self._style_slider_row()
         
         btn_demo_k = QPushButton("Load K-parameter system (s³ + 3s² + 2s + K = 0)")
         btn_demo_k.setToolTip("Test live stability boundary crossing at K = 6.0")
@@ -94,14 +93,26 @@ class RouthTab(QWidget):
         slider_row.addWidget(self.slider_val_label)
         slider_row.addWidget(btn_demo_k)
 
-        left = QWidget()
-        lv = QVBoxLayout(left)
-        lv.addWidget(QLabel("Routh table (click any cell to inspect derivation)"))
-        lv.addWidget(self.table, 3)
-        lv.addWidget(QLabel("Interactive Complex S-Plane Map (s = \u03C3 + j\u03C9)"))
-        lv.addWidget(self.splane, 3)
-        lv.addWidget(QLabel("Numerical poles (numpy.roots)"))
-        lv.addWidget(self.roots, 2)
+        # left column: three resizable sections (drag the dividers between them)
+        def section(title, widget, min_rows):
+            box = QWidget()
+            bv = QVBoxLayout(box)
+            bv.setContentsMargins(0, 0, 0, 0)
+            bv.setSpacing(4)
+            bv.addWidget(QLabel(title))
+            bv.addWidget(widget, 1)
+            # always show the header plus a few rows, whatever the display scale
+            widget.setMinimumHeight(row_h * min_rows)
+            return box
+
+        left = QSplitter(Qt.Vertical)
+        left.setChildrenCollapsible(False)
+        left.addWidget(section("Routh table (click any cell to inspect derivation)", self.table, 3))
+        left.addWidget(section("Interactive Complex S-Plane Map (s = \u03C3 + j\u03C9)", self.splane, 3))
+        left.addWidget(section("Numerical poles (numpy.roots)", self.roots, 2))
+        left.setStretchFactor(0, 3)
+        left.setStretchFactor(1, 3)
+        left.setStretchFactor(2, 2)
         right = QWidget()
         rv = QVBoxLayout(right)
 
@@ -135,8 +146,18 @@ class RouthTab(QWidget):
         header_row.addWidget(self.font_size_label)
         header_row.addWidget(btn_inc)
 
+        # the verdict and the numerical check sit above the steps, where there is room
+        self.verdict = QLabel("")
+        self.verdict.setWordWrap(True)
+        self.verdict.setStyleSheet("font-size:16px; padding:10px; border-radius:6px;")
+        self.check = QLabel("")
+        self.check.setWordWrap(True)
+        self.check.setStyleSheet("font-size:15px; font-weight:600;")
+
+        rv.addWidget(self.verdict)
+        rv.addWidget(self.check)
         rv.addLayout(header_row)
-        rv.addWidget(self.steps)
+        rv.addWidget(self.steps, 1)
         split = QSplitter(Qt.Horizontal)
         split.addWidget(left)
         split.addWidget(right)
@@ -144,20 +165,10 @@ class RouthTab(QWidget):
         split.setStretchFactor(1, 3)
         split.setSizes([460, 740])
 
-        # pt (not px) so the text scales with Windows display scaling
-        self.verdict = QLabel("")
-        self.verdict.setWordWrap(True)
-        self.verdict.setStyleSheet("font-size:13pt; padding:8px; border-radius:6px;")
-        self.check = QLabel("")
-        self.check.setWordWrap(True)
-        self.check.setStyleSheet("font-size:12pt;")
-
         root = QVBoxLayout(self)
         root.addLayout(top)
         root.addLayout(slider_row)
         root.addWidget(split, 1)
-        root.addWidget(self.verdict)
-        root.addWidget(self.check)
 
         self._last_res = None
         self.input.setText("s^4 + 2 s^3 + 3 s^2 + 4 s + 5")
@@ -179,7 +190,9 @@ class RouthTab(QWidget):
         self.steps.clear()
         self.verdict.clear()
         self.verdict.setStyleSheet("")
+        self.verdict.hide()
         self.check.clear()
+        self.check.hide()
 
     def calculate(self):
         try:
@@ -191,27 +204,21 @@ class RouthTab(QWidget):
         self._last_rt = rt
         self._show_table(res)
         self.steps.setHtml(self._steps_html(res))
+        self._show_verdict(res)
         if res.special_case:
-            self._set_verdict(res.special_case, "#F9E2AF", "#3B2E1C", "#6B5328")
             self.roots.setRowCount(0)
             self.splane.clear()
             self.check.setText("")
+            self.check.hide()
             return
-        if res.stable:
-            self._set_verdict("No sign changes in the first column: STABLE "
-                              "(0 poles in the right half-plane).",
-                              "#A6E3A1", "#1C3B2B", "#2E6044")
-        else:
-            self._set_verdict(f"{res.sign_changes} sign change(s) in the first "
-                              f"column: UNSTABLE ({res.sign_changes} pole(s) in "
-                              "the right half-plane).", "#F38BA8", "#3D1F28", "#6E2E3E")
         self._show_roots(rt)
         self.splane.set_roots(rt["roots"], rt["tol"])
         mark = "agrees with" if agrees else "DOES NOT agree with"
-        self.check.setStyleSheet("color: #A6ADC8; font-size: 12px; padding: 4px;")
+        self._style_check()
         self.check.setText(f"Numerical RHP poles = {rt['rhp_count']} "
                            f"(tolerance {rt['tol']:g}); Routh count = "
                            f"{res.sign_changes}: {mark} the Routh result.")
+        self.check.show()
 
     # ---- interactive handlers ----
     def _on_slider_changed(self, val):
@@ -251,14 +258,15 @@ class RouthTab(QWidget):
                        f"({fmt_cell(lower_0)} \u00B7 {fmt_cell(upper_next)} \u2212 "
                        f"{fmt_cell(upper_0)} \u00B7 {fmt_cell(lower_next)}) / {fmt_cell(lower_0)} = {fmt_cell(val)}")
             self.verdict.setText(formula)
-            self.verdict.setStyleSheet("font-size:13px; font-weight:600; padding:10px 14px; border-radius:8px; "
+            self.verdict.setStyleSheet("font-size:16px; font-weight:600; padding:10px 14px; border-radius:8px; "
                                        "color:#CBA6F7; background:#1E1E2E; border:1px solid #CBA6F7;")
 
     # ---- rendering helpers ----
     def _set_verdict(self, text, fg, bg, border="transparent"):
         self.verdict.setText(text)
+        self.verdict.show()
         self.verdict.setStyleSheet(
-            f"font-size:13px; font-weight:600; padding:10px 14px; border-radius:8px; "
+            f"font-size:16px; font-weight:600; padding:12px 16px; border-radius:8px; "
             f"color:{fg}; background:{bg}; border:1px solid {border};")
 
     def _inc_font(self):
@@ -275,8 +283,35 @@ class RouthTab(QWidget):
             if self._last_res:
                 self.steps.setHtml(self._steps_html(self._last_res))
 
+    def _show_verdict(self, res):
+        """Stable / unstable / special-case box, in the current theme's colours."""
+        dark = getattr(self, "_is_dark", True)
+        if res.special_case:
+            text = res.special_case
+            colors = ("#F9E2AF", "#3B2E1C", "#6B5328") if dark else ("#B45309", "#FEF3C7", "#F59E0B")
+        elif res.stable:
+            text = "No sign changes in the first column: STABLE (0 poles in the right half-plane)."
+            colors = ("#A6E3A1", "#1C3B2B", "#2E6044") if dark else ("#047857", "#ECFDF5", "#10B981")
+        else:
+            text = (f"{res.sign_changes} sign change(s) in the first column: UNSTABLE "
+                    f"({res.sign_changes} pole(s) in the right half-plane).")
+            colors = ("#F38BA8", "#3D1F28", "#6E2E3E") if dark else ("#B91C1C", "#FEF2F2", "#EF4444")
+        self._set_verdict(text, *colors)
+
+    def _style_slider_row(self):
+        dark = getattr(self, "_is_dark", True)
+        self.slider_label.setStyleSheet(f"font-weight:600; color:{'#CBA6F7' if dark else '#4F46E5'};")
+        self.slider_val_label.setStyleSheet(
+            f"font-family:Consolas; font-weight:bold; color:{'#A6E3A1' if dark else '#047857'}; min-width:60px;")
+
+    def _style_check(self):
+        color = "#BAC2DE" if getattr(self, "_is_dark", True) else "#334155"
+        self.check.setStyleSheet(f"color: {color}; font-size: 15px; font-weight: 600; padding: 6px 4px;")
+
     def set_theme(self, is_dark: bool):
         self._is_dark = is_dark
+        self._style_check()
+        self._style_slider_row()
         self.splane.set_theme(is_dark)
         if hasattr(self, 'font_size_label'):
             accent = "#CBA6F7" if is_dark else "#6366F1"
@@ -286,18 +321,7 @@ class RouthTab(QWidget):
             self.steps.setHtml(self._steps_html(self._last_res))
             if hasattr(self, '_last_rt') and self._last_rt:
                 self._show_roots(self._last_rt)
-            if self._last_res.special_case:
-                self._set_verdict(self._last_res.special_case, "#D97706" if not is_dark else "#F9E2AF", "#FEF3C7" if not is_dark else "#3B2E1C", "#F59E0B" if not is_dark else "#6B5328")
-            elif self._last_res.stable:
-                self._set_verdict("No sign changes in the first column: STABLE (0 poles in the right half-plane).",
-                                  "#059669" if not is_dark else "#A6E3A1",
-                                  "#ECFDF5" if not is_dark else "#1C3B2B",
-                                  "#10B981" if not is_dark else "#2E6044")
-            else:
-                self._set_verdict(f"{self._last_res.sign_changes} sign change(s) in the first column: UNSTABLE ({self._last_res.sign_changes} pole(s) in the right half-plane).",
-                                  "#DC2626" if not is_dark else "#F38BA8",
-                                  "#FEF2F2" if not is_dark else "#3D1F28",
-                                  "#EF4444" if not is_dark else "#6E2E3E")
+            self._show_verdict(self._last_res)
 
     def _show_table(self, res):
         cols = len(res.rows[0])

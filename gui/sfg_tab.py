@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog,
                              QSplitter, QTableWidget, QTableWidgetItem,
                              QTextEdit, QVBoxLayout, QWidget)
 
-from core.graph import Graph, fmt, parse_gain
+from core.graph import Edge, Graph, fmt, parse_gain
 from core.pipeline import ModuleNotReady, solve_graph
 from gui.graph_canvas import GraphCanvas
 
@@ -287,11 +287,14 @@ class SFGTab(QWidget):
         src = self._cell(r, 0)
         dst = self._cell(r, 1)
         gain = self._cell(r, 2)
-        if src and dst:
-            from core.models import Edge
-            val = parse_gain(gain) if gain else 1.0
-            dummy_edge = Edge(src, dst, val)
-            self.canvas.set_highlight([dummy_edge], [src, dst])
+        if not (src and dst):
+            return
+        try:
+            val = parse_gain(gain)
+        except ValueError:                 # gain empty or still being typed
+            self.canvas.set_highlight([], [src, dst])
+            return
+        self.canvas.set_highlight([Edge(src, dst, val)], [src, dst])
 
     def _on_canvas_edge_clicked(self, src, dst, gain):
         for r in range(self.table.rowCount()):

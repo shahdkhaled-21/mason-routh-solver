@@ -7,8 +7,9 @@ import json
 
 from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QAction, QFileDialog, QMessageBox,
-                             QPushButton, QActionGroup)
+                             QPushButton, QActionGroup, QScrollArea, QFrame)
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QGuiApplication
 
 from core.graph import Graph
 from gui.styles import VELVET_DUSK_QSS, LIGHT_THEME_QSS, apply_title_bar, apply_dark_title_bar
@@ -44,18 +45,24 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.is_dark = True
         self.setWindowTitle("CSE 341: Signal Flow Graphs (Mason) and Routh Stability")
-        self.resize(1200, 800)
+        self._fit_to_screen()
         self.setStyleSheet(VELVET_DUSK_QSS)
 
         self.tabs = QTabWidget()
+        # Qt sizes tabs with the tab bar's own font; make it bold like the
+        # stylesheet draws it, so tab titles are never cut off.
+        tab_font = self.tabs.tabBar().font()
+        tab_font.setBold(True)
+        self.tabs.tabBar().setFont(tab_font)
+        self.tabs.tabBar().setElideMode(Qt.ElideNone)
         self.setCentralWidget(self.tabs)
 
         self.sfg_tab = _make_sfg_tab()
         self.routh_tab = _make_routh_tab()
         if hasattr(self.sfg_tab, "load_builtin_example"):
             self.sfg_tab.load_builtin_example()
-        self.tabs.addTab(self.sfg_tab, "⬡  Signal Flow Graph (Mason)")
-        self.tabs.addTab(self.routh_tab, "◈  Routh Stability (Hurwitz)")
+        self.tabs.addTab(self._scrollable(self.sfg_tab), "⬡  Signal Flow Graph (Mason)")
+        self.tabs.addTab(self._scrollable(self.routh_tab), "◈  Routh Stability (Hurwitz)")
 
         self._build_menu()
         self.statusBar().showMessage("Ready")
@@ -99,7 +106,42 @@ class MainWindow(QMainWindow):
         self.theme_btn.setToolTip("Switch between Dark (Velvet Dusk) and Light theme")
         self.theme_btn.setStyleSheet("font-weight: 600; padding: 4px 12px; margin-right: 8px; border-radius: 12px;")
         self.theme_btn.clicked.connect(self.toggle_theme)
+        # wide enough for both labels, so switching to "Light" is never cut off
+        widths = []
+        for label in ("🌙  Dark", "☀️  Light"):
+            self.theme_btn.setText(label)
+            widths.append(self.theme_btn.sizeHint().width())
+        self.theme_btn.setText("🌙  Dark")
+        self.theme_btn.setMinimumWidth(max(widths) + 8)
         self.menuBar().setCornerWidget(self.theme_btn, Qt.TopRightCorner)
+
+    @staticmethod
+    def _scrollable(tab):
+        """Wrap a tab so a screen smaller than the tab's minimum size scrolls
+        instead of cutting widgets off. On normal screens no scrollbar appears."""
+        area = QScrollArea()
+        area.setWidget(tab)
+        area.setWidgetResizable(True)
+        area.setFrameShape(QFrame.NoFrame)
+        area.setStyleSheet("QScrollArea { background: transparent; }")
+        area.viewport().setAutoFillBackground(False)
+        return area
+
+    def _fit_to_screen(self):
+        """Open at 1200x800, shrunk to fit the screen at any display scale, centred."""
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            self.resize(1200, 800)
+            return
+        avail = screen.availableGeometry()      # already in scaled (logical) pixels
+        w = min(1200, int(avail.width() * 0.95))
+        h = min(800, int(avail.height() * 0.92))
+        self.resize(w, h)
+        self.move(avail.x() + (avail.width() - w) // 2,
+                  avail.y() + (avail.height() - h) // 2)
+        # very small or heavily scaled screens: use all of it
+        if avail.width() < 1100 or avail.height() < 700:
+            self.setWindowState(self.windowState() | Qt.WindowMaximized)
 
     def toggle_theme(self):
         self.set_theme(not self.is_dark)

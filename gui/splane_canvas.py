@@ -31,7 +31,7 @@ class SPlaneCanvas(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(120)
         self.setMinimumWidth(260)
         self.setMouseTracking(True)
         self._roots = []              # list of complex numbers
