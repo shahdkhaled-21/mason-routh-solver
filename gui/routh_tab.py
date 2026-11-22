@@ -13,8 +13,6 @@ UNSTABLE_EXAMPLE = "s^5 + s^4 + 10s^3 + 72s^2 + 152s + 240 = 0"
 
 
 class RouthTab(QWidget):
-    """Input -> Routh table + steps -> verdict -> numerical root check."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         mono = QFont("Consolas")
@@ -72,11 +70,13 @@ class RouthTab(QWidget):
         split.addWidget(right)
         split.setSizes([480, 520])
 
+        # pt (not px) so the text scales with Windows display scaling
         self.verdict = QLabel("")
         self.verdict.setWordWrap(True)
-        self.verdict.setStyleSheet("font-size:14px; padding:8px; border-radius:6px;")
+        self.verdict.setStyleSheet("font-size:13pt; padding:8px; border-radius:6px;")
         self.check = QLabel("")
         self.check.setWordWrap(True)
+        self.check.setStyleSheet("font-size:12pt;")
 
         root = QVBoxLayout(self)
         root.addLayout(top)
@@ -131,7 +131,8 @@ class RouthTab(QWidget):
     def _set_verdict(self, text, fg, bg):
         self.verdict.setText(text)
         self.verdict.setStyleSheet(
-            f"font-size:14px; padding:8px; border-radius:6px; color:{fg}; background:{bg};")
+            f"font-size:13pt; font-weight:bold; padding:8px; border-radius:6px; "
+            f"color:{fg}; background:{bg};")
 
     def _show_table(self, res):
         cols = len(res.rows[0])
