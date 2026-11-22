@@ -72,14 +72,3 @@ docs/                   report and screenshots
 3. Read the Routh table, the calculation steps, the stability verdict and the numerical root check.
 
 (Detailed screenshots are added in the final report.)
-
-## Team
-
-| Name | University ID | Role |
-|---|---|---|
-| Shahd | | Lead, shared contract, main window, packaging |
-| Nada | | SFG input and drawing |
-| Mai | | Forward paths and loops |
-| Mariem | | Non-touching loops, determinant, Mason's formula |
-| Nesma | | Routh stability |
-| Shams | | Testing, report, video |
