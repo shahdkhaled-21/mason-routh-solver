@@ -1,5 +1,5 @@
 #GUI OF ROUTH 
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor, QFont, QFontMetrics
 from PyQt5.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QSplitter,
                              QTableWidget, QTableWidgetItem, QTextEdit,
@@ -11,12 +11,20 @@ from core.routh import analyze, fmt_cell, RouthInputError
 STABLE_EXAMPLE = "s^4 + 10s^3 + 35s^2 + 50s + 24 = 0"
 UNSTABLE_EXAMPLE = "s^5 + s^4 + 10s^3 + 72s^2 + 152s + 240 = 0"
 
+UI_FONT_PT = 12     # labels, buttons, equation box
+MONO_FONT_PT = 13   # Routh table, poles table, calculation steps
+
 
 class RouthTab(QWidget):
+    """Input -> Routh table + steps -> verdict -> numerical root check."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        mono = QFont("Consolas")
+        # font sizes in pt (they scale with Windows display scaling); change here
+        self.setFont(QFont("Segoe UI", UI_FONT_PT))   # labels, buttons, input box
+        mono = QFont("Consolas", MONO_FONT_PT)        # tables and steps panel
         mono.setStyleHint(QFont.Monospace)
+        row_h = int(QFontMetrics(mono).height() * 1.9)   # roomy rows that follow the font
 
         # input row
         self.input = QLineEdit()
@@ -41,6 +49,7 @@ class RouthTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setFont(mono)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.verticalHeader().setDefaultSectionSize(row_h)
 
         # steps
         self.steps = QTextEdit()
@@ -54,6 +63,7 @@ class RouthTab(QWidget):
         self.roots.setFont(mono)
         self.roots.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.roots.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.roots.verticalHeader().setDefaultSectionSize(row_h)
 
         left = QWidget()
         lv = QVBoxLayout(left)
