@@ -6,10 +6,12 @@ their modules exist (see _make_sfg_tab and _make_routh_tab).
 import json
 
 from PyQt5.QtWidgets import (QMainWindow, QTabWidget, QWidget, QVBoxLayout,
-                             QLabel, QAction, QFileDialog, QMessageBox)
-from PyQt5.QtCore import Qt
+                             QHBoxLayout, QLabel, QAction, QFileDialog, QMessageBox,
+                             QPushButton, QActionGroup)
+from PyQt5.QtCore import Qt, QTimer
 
 from core.graph import Graph
+from gui.styles import VELVET_DUSK_QSS, LIGHT_THEME_QSS, apply_title_bar, apply_dark_title_bar
 
 
 def _placeholder(text: str) -> QWidget:
@@ -40,28 +42,81 @@ def _make_routh_tab() -> QWidget:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.is_dark = True
         self.setWindowTitle("CSE 341: Signal Flow Graphs (Mason) and Routh Stability")
         self.resize(1200, 800)
+        self.setStyleSheet(VELVET_DUSK_QSS)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
         self.sfg_tab = _make_sfg_tab()
         self.routh_tab = _make_routh_tab()
-        self.tabs.addTab(self.sfg_tab, "Signal Flow Graph")
-        self.tabs.addTab(self.routh_tab, "Routh Stability")
+        if hasattr(self.sfg_tab, "load_builtin_example"):
+            self.sfg_tab.load_builtin_example()
+        self.tabs.addTab(self.sfg_tab, "⬡  Signal Flow Graph (Mason)")
+        self.tabs.addTab(self.routh_tab, "◈  Routh Stability (Hurwitz)")
 
         self._build_menu()
         self.statusBar().showMessage("Ready")
+        apply_title_bar(self, self.is_dark)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        apply_title_bar(self, self.is_dark)
+        QTimer.singleShot(50, lambda: apply_title_bar(self, self.is_dark))
+        QTimer.singleShot(200, lambda: apply_title_bar(self, self.is_dark))
 
     def _build_menu(self):
-        menu = self.menuBar().addMenu("&File")
-        for text, handler in [("Load graph...", self.load_graph),
-                              ("Save graph...", self.save_graph),
-                              ("Exit", self.close)]:
+        # File Menu
+        menu = self.menuBar().addMenu("▤  File")
+        for text, handler in [("📂  Load graph...", self.load_graph),
+                              ("💾  Save graph...", self.save_graph),
+                              ("✕   Exit", self.close)]:
             action = QAction(text, self)
             action.triggered.connect(handler)
             menu.addAction(action)
+
+        # Theme Menu
+        theme_menu = self.menuBar().addMenu("🎨  Theme")
+        self.theme_group = QActionGroup(self)
+        self.theme_group.setExclusive(True)
+
+        self.dark_action = QAction("🌙  Velvet Dusk (Dark)", self, checkable=True)
+        self.dark_action.setChecked(True)
+        self.dark_action.triggered.connect(lambda: self.set_theme(True))
+        self.theme_group.addAction(self.dark_action)
+        theme_menu.addAction(self.dark_action)
+
+        self.light_action = QAction("☀️  Soft Light (Light)", self, checkable=True)
+        self.light_action.setChecked(False)
+        self.light_action.triggered.connect(lambda: self.set_theme(False))
+        self.theme_group.addAction(self.light_action)
+        theme_menu.addAction(self.light_action)
+
+        # Quick corner toggle button in menu bar
+        self.theme_btn = QPushButton("🌙  Dark")
+        self.theme_btn.setToolTip("Switch between Dark (Velvet Dusk) and Light theme")
+        self.theme_btn.setStyleSheet("font-weight: 600; padding: 4px 12px; margin-right: 8px; border-radius: 12px;")
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        self.menuBar().setCornerWidget(self.theme_btn, Qt.TopRightCorner)
+
+    def toggle_theme(self):
+        self.set_theme(not self.is_dark)
+
+    def set_theme(self, is_dark: bool):
+        self.is_dark = is_dark
+        self.setStyleSheet(VELVET_DUSK_QSS if is_dark else LIGHT_THEME_QSS)
+        apply_title_bar(self, is_dark)
+        self.theme_btn.setText("🌙  Dark" if is_dark else "☀️  Light")
+        self.dark_action.setChecked(is_dark)
+        self.light_action.setChecked(not is_dark)
+
+        if hasattr(self.sfg_tab, "set_theme"):
+            self.sfg_tab.set_theme(is_dark)
+        if hasattr(self.routh_tab, "set_theme"):
+            self.routh_tab.set_theme(is_dark)
+        self.statusBar().showMessage(f"Theme switched to {'Velvet Dusk (Dark)' if is_dark else 'Soft Light (Light)'}", 3000)
 
     def _sfg_ready(self) -> bool:
         """True when Nada's real tab is installed (it has get_graph/set_graph)."""

@@ -16,9 +16,9 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QBrush, QColor, QFontDatabase
 from PyQt5.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog,
                              QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-                             QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+                             QMenu, QMessageBox, QPushButton,
                              QSplitter, QTableWidget, QTableWidgetItem,
-                             QVBoxLayout, QWidget)
+                             QTextEdit, QVBoxLayout, QWidget)
 
 from core.graph import Graph, fmt, parse_gain
 from core.pipeline import ModuleNotReady, solve_graph
@@ -40,7 +40,7 @@ BUILTIN_EXAMPLE = {
     "sink": "C",
 }
 
-BAD_CELL = QColor("#FDE0DD")
+BAD_CELL = QColor("#4A202A")
 
 
 class SFGTab(QWidget):
@@ -59,15 +59,15 @@ class SFGTab(QWidget):
         self._reset_table()
         self._live_update()
 
+    def load_builtin_example(self):
+        """Populate the table and canvas with the built-in example and solve."""
+        self.set_graph(Graph.from_dict(BUILTIN_EXAMPLE))
+        self.solve()
+
     # ================================================================== UI
 
     def _build_ui(self):
-        self.setStyleSheet("""
-            QPushButton { padding: 6px 12px; }
-            QPushButton#solveButton { background: #1976D2; color: white;
-                                      font-weight: bold; border-radius: 4px; }
-            QPushButton#solveButton:hover { background: #1565C0; }
-        """)
+
 
         # ---- left: input ----
         self.table = QTableWidget(0, 3)
@@ -98,7 +98,7 @@ class SFGTab(QWidget):
 
         self.problem_label = QLabel("")
         self.problem_label.setWordWrap(True)
-        self.problem_label.setStyleSheet("color: #C62828;")
+        self.problem_label.setStyleSheet("color: #F38BA8; font-weight: 500;")
 
         self.solve_btn = QPushButton("Solve")
         self.solve_btn.setObjectName("solveButton")
@@ -114,6 +114,9 @@ class SFGTab(QWidget):
         layout_btn = QPushButton("Auto layout")
         layout_btn.setToolTip("Put the nodes back in their automatic positions")
         layout_btn.clicked.connect(lambda: self.canvas.auto_layout())
+        self.anim_btn = QPushButton("▶ Animate flow")
+        self.anim_btn.setToolTip("Toggle animated signal pulse packets flowing along the branches")
+        self.anim_btn.clicked.connect(self._toggle_animation)
 
         button_grid = QVBoxLayout()
         first = QHBoxLayout()
@@ -125,9 +128,12 @@ class SFGTab(QWidget):
         third = QHBoxLayout()
         third.addWidget(export_btn)
         third.addWidget(layout_btn)
+        fourth = QHBoxLayout()
+        fourth.addWidget(self.anim_btn)
         button_grid.addLayout(first)
         button_grid.addLayout(second)
         button_grid.addLayout(third)
+        button_grid.addLayout(fourth)
 
         input_box = QGroupBox("Branches")
         input_layout = QVBoxLayout(input_box)
@@ -139,10 +145,13 @@ class SFGTab(QWidget):
 
         # ---- right: drawing and results ----
         self.canvas = GraphCanvas()
-        legend = QLabel('<span style="color:#2E7D32">&#9679;</span> input node &nbsp;&nbsp;'
-                        '<span style="color:#EF6C00">&#9679;</span> output node &nbsp;&nbsp;'
-                        '<span style="color:#1E88E5">&#9679;</span> other node &nbsp;&nbsp;'
-                        '&nbsp;(drag nodes to move them, scroll to zoom)')
+        self.canvas.edge_clicked.connect(self._on_canvas_edge_clicked)
+        self.canvas.node_clicked.connect(self._on_canvas_node_clicked)
+        self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
+        legend = QLabel('<span style="color:#A6E3A1; font-size:14px;">&#9679;</span> input node &nbsp;&nbsp;'
+                        '<span style="color:#FAB387; font-size:14px;">&#9679;</span> output node &nbsp;&nbsp;'
+                        '<span style="color:#89DCEB; font-size:14px;">&#9679;</span> other node &nbsp;&nbsp;'
+                        '<span style="color:#A6ADC8;">(drag nodes to move them, scroll to zoom)</span>')
         draw_box = QGroupBox("Signal flow graph")
         draw_layout = QVBoxLayout(draw_box)
         draw_layout.addWidget(self.canvas, 1)
@@ -154,9 +163,34 @@ class SFGTab(QWidget):
         highlight_row.addWidget(QLabel("Highlight on graph:"))
         highlight_row.addWidget(self.highlight_combo, 1)
 
-        self.results = QPlainTextEdit()
+        # Font zoom controls for Mason calculation steps
+        self._font_size = 14
+        self._is_dark = True
+        self._last_report = ""
+
+        font_tag = QLabel("Font:")
+        font_tag.setStyleSheet("color:#A6ADC8; font-weight:600; font-size:11px; margin-left:8px;")
+        btn_dec = QPushButton("A-")
+        btn_dec.setObjectName("fontBtn")
+        btn_dec.setToolTip("Decrease calculation font size")
+        btn_dec.setFixedSize(30, 24)
+        btn_dec.clicked.connect(self._dec_font)
+        self.font_size_label = QLabel(f"{self._font_size}px")
+        self.font_size_label.setStyleSheet("font-weight:bold; font-size:12px; min-width:32px;")
+        self.font_size_label.setAlignment(Qt.AlignCenter)
+        btn_inc = QPushButton("A+")
+        btn_inc.setObjectName("fontBtn")
+        btn_inc.setToolTip("Increase calculation font size")
+        btn_inc.setFixedSize(30, 24)
+        btn_inc.clicked.connect(self._inc_font)
+
+        highlight_row.addWidget(font_tag)
+        highlight_row.addWidget(btn_dec)
+        highlight_row.addWidget(self.font_size_label)
+        highlight_row.addWidget(btn_inc)
+
+        self.results = QTextEdit()
         self.results.setReadOnly(True)
-        self.results.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.results.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         self.results.setPlaceholderText("Press Solve to see the step-by-step solution here.")
         results_box = QGroupBox("Results")
@@ -167,12 +201,16 @@ class SFGTab(QWidget):
         right = QSplitter(Qt.Vertical)
         right.addWidget(draw_box)
         right.addWidget(results_box)
-        right.setSizes([420, 380])
+        right.setStretchFactor(0, 3)
+        right.setStretchFactor(1, 2)
+        right.setSizes([450, 350])
 
         main = QSplitter(Qt.Horizontal)
         main.addWidget(input_box)
         main.addWidget(right)
-        main.setSizes([380, 820])
+        main.setStretchFactor(0, 2)
+        main.setStretchFactor(1, 3)
+        main.setSizes([440, 760])
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(6, 6, 6, 6)
@@ -235,6 +273,42 @@ class SFGTab(QWidget):
         self.results.clear()
         self._live_update(fit=True)
 
+    def _toggle_animation(self):
+        is_on = self.canvas.toggle_animation()
+        self.anim_btn.setText("⏸ Pause flow" if is_on else "▶ Animate flow")
+
+    def _on_table_selection_changed(self):
+        if self._loading:
+            return
+        selected_rows = sorted({idx.row() for idx in self.table.selectedIndexes()})
+        if not selected_rows:
+            return
+        r = selected_rows[0]
+        src = self._cell(r, 0)
+        dst = self._cell(r, 1)
+        gain = self._cell(r, 2)
+        if src and dst:
+            from core.models import Edge
+            val = parse_gain(gain) if gain else 1.0
+            dummy_edge = Edge(src, dst, val)
+            self.canvas.set_highlight([dummy_edge], [src, dst])
+
+    def _on_canvas_edge_clicked(self, src, dst, gain):
+        for r in range(self.table.rowCount()):
+            if self._cell(r, 0) == src and self._cell(r, 1) == dst:
+                self.table.selectRow(r)
+                break
+
+    def _on_canvas_node_clicked(self, node):
+        if not self.source_combo.currentText().strip():
+            idx = self.source_combo.findText(node)
+            if idx >= 0:
+                self.source_combo.setCurrentIndex(idx)
+        elif not self.sink_combo.currentText().strip() and node != self.source_combo.currentText().strip():
+            idx = self.sink_combo.findText(node)
+            if idx >= 0:
+                self.sink_combo.setCurrentIndex(idx)
+
     def solve(self):
         """Run the Part 1 pipeline and show the report."""
         try:
@@ -255,8 +329,82 @@ class SFGTab(QWidget):
             QMessageBox.critical(self, "Unexpected error", f"{type(e).__name__}: {e}")
             return
 
-        self.results.setPlainText(result.report)
+        self._last_report = result.report
+        self.results.setHtml(self._format_mason_report_html(result.report))
         self._fill_highlight_choices(result.paths, result.loops)
+
+    def _inc_font(self):
+        if self._font_size < 26:
+            self._font_size += 1
+            self.font_size_label.setText(f"{self._font_size}px")
+            if self._last_report:
+                self.results.setHtml(self._format_mason_report_html(self._last_report))
+
+    def _dec_font(self):
+        if self._font_size > 10:
+            self._font_size -= 1
+            self.font_size_label.setText(f"{self._font_size}px")
+            if self._last_report:
+                self.results.setHtml(self._format_mason_report_html(self._last_report))
+
+    def set_theme(self, is_dark: bool):
+        self._is_dark = is_dark
+        self.canvas.set_theme(is_dark)
+        if hasattr(self, 'font_size_label'):
+            accent = "#CBA6F7" if is_dark else "#6366F1"
+            self.font_size_label.setStyleSheet(f"color:{accent}; font-weight:bold; font-size:12px; min-width:32px;")
+        if self._last_report:
+            self.results.setHtml(self._format_mason_report_html(self._last_report))
+
+    def _format_mason_report_html(self, report_text):
+        if not report_text.strip():
+            return f"<div style='color:#6C7086; font-style:italic; font-size:{self._font_size}px; padding:8px;'>Press Solve to see the step-by-step solution here.</div>"
+
+        # Theme sensitive colors
+        if self._is_dark:
+            col_text = "#CDD6F4"
+            col_card_bg = "#181825"
+            col_card_border = "#313244"
+            col_accent = "#CBA6F7"
+            col_res_bg = "#1C3B2B"
+            col_res_border = "#2E6044"
+            col_res_text = "#A6E3A1"
+            col_path = "#89DCEB"
+            col_loop = "#FAB387"
+        else:
+            col_text = "#0F172A"
+            col_card_bg = "#FFFFFF"
+            col_card_border = "#CBD5E1"
+            col_accent = "#6366F1"
+            col_res_bg = "#ECFDF5"
+            col_res_border = "#6EE7B7"
+            col_res_text = "#065F46"
+            col_path = "#0284C7"
+            col_loop = "#D97706"
+
+        fs = self._font_size
+        lines = report_text.splitlines()
+        html = [f"<div style=\"font-family:'Segoe UI',-apple-system,sans-serif; color:{col_text}; font-size:{fs}px; line-height:1.6;\">"]
+
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                html.append("<div style='height:8px;'></div>")
+            elif any(line_str.startswith(f"{i}.") for i in range(1, 10)):
+                html.append(f"<div style='background-color:{col_card_bg}; border:1px solid {col_card_border}; color:{col_accent}; font-weight:bold; font-size:{fs}px; padding:8px 14px; border-radius:10px; margin-top:12px; margin-bottom:6px;'>✦ {line_str}</div>")
+            elif "RESULT:" in line_str:
+                html.append(f"<div style='background-color:{col_res_bg}; border:1.5px solid {col_res_border}; color:{col_res_text}; font-weight:bold; font-size:{fs+1}px; font-family:Consolas,monospace; padding:12px 16px; border-radius:10px; margin:12px 0;'>{line_str}</div>")
+            elif line_str.startswith("P") and ":" in line_str:
+                html.append(f"<div style='color:{col_path}; font-weight:bold; font-size:{fs}px; font-family:Consolas,monospace; margin-top:5px; padding-left:8px;'>{line}</div>")
+            elif line_str.startswith("L") and ":" in line_str:
+                html.append(f"<div style='color:{col_loop}; font-weight:bold; font-size:{fs}px; font-family:Consolas,monospace; margin-top:5px; padding-left:8px;'>{line}</div>")
+            elif ("M" in line_str or "Δ" in line_str or "T =" in line_str) and "=" in line_str:
+                html.append(f"<div style='color:{col_accent}; font-size:{fs}px; font-family:Consolas,monospace; padding-left:12px; margin-top:3px;'>{line}</div>")
+            else:
+                html.append(f"<div style='color:{col_text}; font-size:{fs}px; font-family:Consolas,monospace; padding-left:8px;'>{line}</div>")
+
+        html.append("</div>")
+        return "".join(html)
 
     # ============================================================ table input
 
@@ -465,7 +613,7 @@ class SFGTab(QWidget):
             lines.append("")
             lines.append("Individual loops:")
             lines += [f"  {lp.gain_str}" for lp in loops] or ["  none"]
-        self.results.setPlainText("\n".join(lines))
+        self.results.setHtml(self._format_mason_report_html("\n".join(lines)))
         self._fill_highlight_choices(paths, loops)
 
     # ================================================================ files

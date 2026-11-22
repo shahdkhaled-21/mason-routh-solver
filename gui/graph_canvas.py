@@ -10,7 +10,7 @@ GraphCanvas is a QGraphicsView that shows:
 The canvas knows nothing about solving. gui/sfg_tab.py feeds it plain data
 through set_graph_data() and asks it to highlight a path or a loop.
 """
-from PyQt5.QtCore import Qt, QPointF, QRectF
+from PyQt5.QtCore import Qt, QPointF, QRectF, QTimer, pyqtSignal
 from PyQt5.QtGui import (QBrush, QColor, QFont, QFontMetrics, QImage, QPainter,
                          QPainterPath, QPen, QPolygonF)
 from PyQt5.QtWidgets import (QGraphicsEllipseItem, QGraphicsItem,
@@ -22,14 +22,18 @@ from core.graph import parse_gain
 from gui.layout import (arrow_points, compute_layout, cubic_at, quad_at,
                         quad_points, route_edges, self_loop_points, unit_vector)
 
-SOURCE_FILL = QColor("#81C784")      # input node
-SINK_FILL = QColor("#FFB74D")        # output node
-NODE_FILL = QColor("#90CAF9")        # every other node
-NODE_BORDER = QColor("#263238")
-EDGE_COLOR = QColor("#37474F")
-HIGHLIGHT = QColor("#D32F2F")
-LABEL_COLOR = QColor("#0D47A1")
-LABEL_BORDER = QColor("#B0BEC5")
+SOURCE_FILL = QColor("#A6E3A1")      # input node (mint)
+SINK_FILL = QColor("#FAB387")        # output node (peach)
+NODE_FILL = QColor("#89DCEB")        # every other node (sky)
+NODE_BORDER = QColor("#1E1E2E")      # contrast ring
+NODE_TEXT_COLOR = QColor("#11111B")  # dark text on pastel circles
+EDGE_COLOR = QColor("#89DCEB")       # soft sky branches
+HIGHLIGHT = QColor("#CBA6F7")        # pastel lavender highlight
+LABEL_COLOR = QColor("#CDD6F4")      # soft light text
+LABEL_BORDER = QColor("#45475A")
+LABEL_BG_COLOR = QColor("#181825")   # velvet mantle
+CANVAS_BG = QColor("#181825")
+CANVAS_DOT = QColor("#2D2B3D")
 
 
 class NodeItem(QGraphicsEllipseItem):
@@ -53,9 +57,14 @@ class NodeItem(QGraphicsEllipseItem):
 
         self.text = QGraphicsSimpleTextItem(name, self)
         self.text.setFont(font)
-        self.text.setBrush(QBrush(NODE_BORDER))
+        self.text.setBrush(QBrush(NODE_TEXT_COLOR))
         box = self.text.boundingRect()
         self.text.setPos(-box.width() / 2.0, -box.height() / 2.0)
+        self.setPen(QPen(NODE_BORDER, 2))
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.canvas.node_clicked.emit(self.name)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionHasChanged:
@@ -66,12 +75,15 @@ class NodeItem(QGraphicsEllipseItem):
 class EdgeItem(QGraphicsPathItem):
     """One branch: a curve, an arrowhead and a gain label."""
 
-    def __init__(self, src, dst, gain_text):
+    def __init__(self, src, dst, gain_text, canvas=None):
         super().__init__()
         self.src = src
         self.dst = dst
         self.gain_text = gain_text
+        self.canvas = canvas
+        self._is_highlighted = False
         self.setZValue(1)
+        self.setCursor(Qt.PointingHandCursor)
 
         self.arrow = QGraphicsPathItem(self)
         self.label_bg = QGraphicsRectItem(self)
@@ -80,7 +92,7 @@ class EdgeItem(QGraphicsPathItem):
         font.setBold(True)
         font.setPointSize(10)
         self.label.setFont(font)
-        self.label_bg.setBrush(QBrush(Qt.white))
+        self.label_bg.setBrush(QBrush(LABEL_BG_COLOR))
         self.label_bg.setPen(QPen(LABEL_BORDER, 1))
         self.label_bg.setZValue(0)
         self.label.setZValue(1)
@@ -100,23 +112,52 @@ class EdgeItem(QGraphicsPathItem):
         self.label_bg.setRect(x - 3, y - 1, box.width() + 6, box.height() + 2)
 
     def set_highlight(self, on):
+        self._is_highlighted = on
         color = HIGHLIGHT if on else EDGE_COLOR
-        self.setPen(QPen(color, 3.2 if on else 1.7))
+        width = 3.5 if on else 1.8
+        pen = QPen(color, width)
+        if self.canvas and self.canvas.is_animating():
+            pen.setStyle(Qt.CustomDashLine)
+            pen.setDashPattern([8.0, 5.0])
+            pen.setDashOffset(self.canvas.anim_offset())
+        else:
+            pen.setStyle(Qt.SolidLine)
+        self.setPen(pen)
         self.setBrush(QBrush(Qt.NoBrush))
         self.arrow.setPen(QPen(color, 1))
         self.arrow.setBrush(QBrush(color))
         self.label.setBrush(QBrush(HIGHLIGHT if on else LABEL_COLOR))
+        self.label_bg.setPen(QPen(HIGHLIGHT if on else LABEL_BORDER, 1.2 if on else 1))
+
+    def update_dash_offset(self, offset):
+        """Update dash offset for moving dashed line animation."""
+        color = HIGHLIGHT if self._is_highlighted else EDGE_COLOR
+        width = 3.5 if self._is_highlighted else 1.8
+        pen = QPen(color, width)
+        pen.setStyle(Qt.CustomDashLine)
+        pen.setDashPattern([8.0, 5.0])
+        pen.setDashOffset(offset)
+        self.setPen(pen)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if self.canvas:
+            self.canvas.edge_clicked.emit(self.src, self.dst, self.gain_text)
 
 
 class GraphCanvas(QGraphicsView):
     """The drawing area. Scroll wheel zooms, empty space can be dragged to pan."""
+
+    node_clicked = pyqtSignal(str)
+    edge_clicked = pyqtSignal(str, str, str)
+    animation_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
         self.setRenderHint(QPainter.Antialiasing)
-        self.setBackgroundBrush(QBrush(Qt.white))
+        self.setBackgroundBrush(QBrush(CANVAS_BG))
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
         self.setMinimumHeight(260)
@@ -133,6 +174,30 @@ class GraphCanvas(QGraphicsView):
         self._edge_items = []
         self._highlight = ([], [])    # (edges, node names)
         self._building = False
+
+        # Moving dashed line animation
+        self._is_dark = True
+        self._update_colors()
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(30)
+        self._anim_timer.timeout.connect(self._on_anim_tick)
+        self._anim_offset = 0.0
+
+    def set_theme(self, is_dark: bool):
+        self._is_dark = is_dark
+        self._update_colors()
+        self.setBackgroundBrush(QBrush(self.col_bg))
+        self._rebuild()
+
+    def _update_colors(self):
+        if self._is_dark:
+            self.col_bg = QColor("#181825")
+            self.col_dot = QColor("#2D2B3D")
+        else:
+            self.col_bg = QColor("#F8FAFC")
+            self.col_dot = QColor("#CBD5E1")
+        self._animating = False
+
         self._draw_hint()
 
     # ------------------------------------------------------------------ data
@@ -190,32 +255,78 @@ class GraphCanvas(QGraphicsView):
 
     def _apply_highlight(self):
         hl_edges, hl_nodes = self._highlight
-        for item in self._edge_items:
-            item.set_highlight(False)
-        for name, item in self._node_items.items():
-            on = name in hl_nodes
-            item.setPen(QPen(HIGHLIGHT if on else NODE_BORDER, 4 if on else 2))
+        has_highlight = bool(hl_edges or hl_nodes)
 
-        used = set()
-        for e in hl_edges:
-            for i, item in enumerate(self._edge_items):
-                if i in used or item.src != e.source or item.dst != e.target:
-                    continue
-                try:
-                    same_gain = parse_gain(item.gain_text) == e.gain
-                except ValueError:
-                    same_gain = False
-                if same_gain:
-                    item.set_highlight(True)
-                    used.add(i)
-                    break
+        # 1. Match edges in the highlight set
+        highlighted_indices = set()
+        if has_highlight:
+            for e in hl_edges:
+                for i, item in enumerate(self._edge_items):
+                    if i in highlighted_indices or item.src != e.source or item.dst != e.target:
+                        continue
+                    try:
+                        same_gain = parse_gain(item.gain_text) == e.gain
+                    except ValueError:
+                        same_gain = False
+                    if same_gain:
+                        highlighted_indices.add(i)
+                        break
+
+        # 2. Style edges (highlight active, dim non-active)
+        for i, item in enumerate(self._edge_items):
+            is_active = i in highlighted_indices
+            item.set_highlight(is_active)
+            if has_highlight:
+                if is_active:
+                    item.setOpacity(1.0)
+                    item.setZValue(5)
+                else:
+                    item.setOpacity(0.18)  # Dim all other branches
+                    item.setZValue(1)
+            else:
+                item.setOpacity(1.0)
+                item.setZValue(1)
+
+        # 3. Style nodes (highlight active, dim non-active)
+        for name, item in self._node_items.items():
+            is_active = name in hl_nodes
+            item.setPen(QPen(HIGHLIGHT if is_active else NODE_BORDER, 4.0 if is_active else 2.0))
+            if has_highlight:
+                if is_active:
+                    item.setOpacity(1.0)
+                    item.setZValue(6)
+                else:
+                    item.setOpacity(0.25)  # Dim all other nodes
+                    item.setZValue(2)
+            else:
+                item.setOpacity(1.0)
+                item.setZValue(2)
 
     # --------------------------------------------------------------- drawing
 
     def _draw_hint(self):
         self._scene.clear()
         hint = self._scene.addText("Add branches in the table to draw the graph")
-        hint.setDefaultTextColor(QColor("#90A4AE"))
+        hint.setDefaultTextColor(QColor("#A6ADC8"))
+
+    def drawBackground(self, painter, rect):
+        bg = self.col_bg if hasattr(self, 'col_bg') else CANVAS_BG
+        dot = self.col_dot if hasattr(self, 'col_dot') else CANVAS_DOT
+        painter.fillRect(rect, bg)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setPen(QPen(dot, 1.5))
+        grid_size = 24
+        left = int(rect.left()) - (int(rect.left()) % grid_size)
+        top = int(rect.top()) - (int(rect.top()) % grid_size)
+        x = left
+        while x < rect.right():
+            y = top
+            while y < rect.bottom():
+                painter.drawPoint(x, y)
+                y += grid_size
+            x += grid_size
+        painter.restore()
 
     def _rebuild(self):
         self._building = True
@@ -243,14 +354,54 @@ class GraphCanvas(QGraphicsView):
 
         for src, dst, gain in self._edges:
             if src in self._node_items and dst in self._node_items:
-                edge = EdgeItem(src, dst, gain)
+                edge = EdgeItem(src, dst, gain, self)
                 self._scene.addItem(edge)
                 self._edge_items.append(edge)
 
         self._building = False
         self._update_edges()
         self._apply_highlight()
+        if self._animating:
+            for edge in self._edge_items:
+                edge.update_dash_offset(self._anim_offset)
         self._scene.setSceneRect(self._scene.itemsBoundingRect().adjusted(-40, -40, 40, 40))
+
+    # ----------------------------------------------------------- animation
+    def toggle_animation(self) -> bool:
+        """Toggle live signal flow moving dashed line animation."""
+        if self._animating:
+            self.stop_animation()
+        else:
+            self.start_animation()
+        return self._animating
+
+    def start_animation(self):
+        self._animating = True
+        self._anim_timer.start()
+        for edge in self._edge_items:
+            edge.update_dash_offset(self._anim_offset)
+        self.animation_toggled.emit(True)
+
+    def stop_animation(self):
+        self._animating = False
+        self._anim_timer.stop()
+        for edge in self._edge_items:
+            edge.set_highlight(edge._is_highlighted)
+        self.animation_toggled.emit(False)
+
+    def anim_offset(self) -> float:
+        return self._anim_offset
+
+    def is_animating(self) -> bool:
+        return self._animating
+
+    def _on_anim_tick(self):
+        if not self._animating or not self._edge_items:
+            return
+        # Negative offset moves dashes forward along the branch direction
+        self._anim_offset -= 1.0
+        for edge in self._edge_items:
+            edge.update_dash_offset(self._anim_offset)
 
     def _node_moved(self, item):
         if self._building:
