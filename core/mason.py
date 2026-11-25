@@ -86,6 +86,7 @@ def mason_report(paths, loops, groups):
 
     # 1. Forward paths
     add(f"1. FORWARD PATHS ({len(paths)})")
+    add("  Definition: Mi = product of the branch gains along forward path i (input to output, no node twice).")
     if not paths:
         add("  There is no forward path from the input node to the output node.")
     for p in paths:
@@ -95,6 +96,7 @@ def mason_report(paths, loops, groups):
     # 2. Individual loops
     add("")
     add(f"2. INDIVIDUAL LOOPS ({len(loops)})")
+    add("  Definition: loop gain = product of the branch gains around a closed path (no node twice).")
     if not loops:
         add("  The graph has no loops.")
     for lp in loops:
@@ -104,6 +106,7 @@ def mason_report(paths, loops, groups):
     # 3. Non-touching groups
     add("")
     add("3. NON-TOUCHING LOOPS ")
+    add("  Definition: loops are non-touching if they share no node; a group's gain is the product of its loop gains.")
     if not groups:
         add("  None.")
     size_names = {2: "pairs", 3: "triples", 4: "groups of 4"}
@@ -117,6 +120,7 @@ def mason_report(paths, loops, groups):
     delta, formula, numbers = compute_delta(loops, groups)
     add("")
     add("4. DETERMINANT Δ")
+    add("  Definition: Δ = 1 - Σ(loop gains) + Σ(2 non-touching-loop products) - Σ(3-loop products) + ...")
     add(f"  Δ = {formula}")
     add(f"  Δ = {numbers}")
     add(f"  Δ = {fmt(delta)}")
@@ -124,6 +128,7 @@ def mason_report(paths, loops, groups):
     # 5. Cofactors Δi
     add("")
     add("5. COFACTORS Δi")
+    add("  Definition: Δi = Δ evaluated using only the loops that do not touch forward path i.")
     if not paths:
         add("  No forward paths, so there are no cofactors.")
     cofactors = []
@@ -145,6 +150,8 @@ def mason_report(paths, loops, groups):
     # 6. Mason's gain formula
     add("")
     add("6. MASON'S GAIN FORMULA")
+    add("  Formula: T = C/R = (M1 Δ1 + M2 Δ2 + ... + Mm Δm) / Δ,  m = number of forward paths")
+    add(f"  Here m = {len(paths)}.")
     products = []
     for i, (p, d) in enumerate(zip(paths, cofactors), start=1):
         products.append(p.gain * d)

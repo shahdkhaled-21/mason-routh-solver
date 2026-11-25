@@ -1,0 +1,18 @@
+{
+  "nodes": ["R", "A", "B", "C", "D", "E", "F", "Y"],
+  "edges": [
+    {"from": "R", "to": "A", "gain": "1"},
+    {"from": "A", "to": "B", "gain": "2"},
+    {"from": "B", "to": "C", "gain": "3"},
+    {"from": "C", "to": "D", "gain": "4"},
+    {"from": "D", "to": "E", "gain": "1"},
+    {"from": "E", "to": "F", "gain": "5"},
+    {"from": "F", "to": "Y", "gain": "1"},
+    {"from": "B", "to": "A", "gain": "-1"},
+    {"from": "D", "to": "C", "gain": "-2"},
+    {"from": "F", "to": "E", "gain": "-3"},
+    {"from": "B", "to": "E", "gain": "6"}
+  ],
+  "source": "R",
+  "sink": "Y"
+}

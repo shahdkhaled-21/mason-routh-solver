@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                              QVBoxLayout, QWidget, QAbstractItemView)
 from PyQt5.QtCore import Qt
 
-from core.routh import analyze, fmt_cell, RouthInputError
+from core.routh import analyze, fmt_cell, RouthInputError, TOL
 from gui.splane_canvas import SPlaneCanvas
 
 STABLE_EXAMPLE = "s^4 + 10s^3 + 35s^2 + 50s + 24 = 0"
@@ -78,7 +78,7 @@ class RouthTab(QWidget):
         slider_row = QHBoxLayout()
         self.slider_label = slider_label = QLabel("Interactive Gain Tuning:")
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(0, 200)   # K: 0.0 to 20.0
+        self.slider.setRange(1, 200)   # K: 0.1 to 20.0 (K = 0 is not allowed)
         self.slider.setValue(40)       # K = 4.0
         self.slider.valueChanged.connect(self._on_slider_changed)
         self.slider_val_label = QLabel("K = 4.0")
@@ -375,6 +375,10 @@ class RouthTab(QWidget):
             <div style="color:{subtext}; font-size:{max(11, fs-2)}px;">
               &bull; <b>lower</b>: row directly above the new cell &nbsp;&bull;&nbsp; <b>upper</b>: row above lower
             </div>
+            <div style="margin-top:8px;"><b>Routh criterion:</b> number of right-half-plane poles = number of sign
+              changes in the first column; the system is stable if there are none.</div>
+            <div style="margin-top:4px;"><b>Numerical check:</b> poles are the roots s of the characteristic equation
+              (numpy.roots, eigenvalues of the companion matrix). A pole is in the right half-plane if Re(s) &gt; {TOL:g}.</div>
           </div>
         """)
 

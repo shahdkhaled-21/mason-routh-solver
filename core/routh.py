@@ -27,7 +27,11 @@ def parse_polynomial(text:str) -> list:
     text = text.strip() #delete leading and trailing whitespace
     if not text: #if the text is empty raise an error
         raise RouthInputError("Enter a polynomial or a list of coefficients.")
-    text = text.split("=")[0].replace(" ", "").replace("**", "^")
+    text = text.split("=")[0].replace(" ", "").replace("**", "^").replace("S", "s")
+    # accept superscript powers as pasted from a PDF, e.g. s⁵ -> s^5
+    text = re.sub(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]+",
+                  lambda m: "^" + m.group().translate(str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789")),
+                  text).replace("−", "-")
     try: #it checks if the text is a list of coefficients or a polynomial and returns the coefficients in a list
         if re.fullmatch(r"[-+0-9./,;]+", text): 
             coeffs = [Fraction(t) for t in re.split(r"[,;]", text) if t]

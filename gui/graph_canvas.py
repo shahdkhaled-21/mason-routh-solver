@@ -177,6 +177,7 @@ class GraphCanvas(QGraphicsView):
 
         # Moving dashed line animation
         self._is_dark = True
+        self._animating = False
         self._update_colors()
         self._anim_timer = QTimer(self)
         self._anim_timer.setInterval(30)
@@ -196,7 +197,6 @@ class GraphCanvas(QGraphicsView):
         else:
             self.col_bg = QColor("#F8FAFC")
             self.col_dot = QColor("#CBD5E1")
-        self._animating = False
 
         self._draw_hint()
 

@@ -68,7 +68,7 @@ docs/                   report and screenshots
 
 ### Part 2: Routh Stability
 1. Enter the characteristic polynomial.
-2. Click **Solve**.
+2. Click **Calculate**.
 3. Read the Routh table, the calculation steps, the stability verdict and the numerical root check.
 
 (Detailed screenshots are added in the final report.)
