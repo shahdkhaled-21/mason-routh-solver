@@ -30,7 +30,7 @@ python main.py
 
 ## Run the executable
 
-Double-click `MasonRouthSolver.exe`. No Python installation is needed.
+Double-click `dist/MasonRouthSolver.exe` (or run `.\dist\MasonRouthSolver.exe` from the terminal). No Python installation is needed — Python and all required dependencies are bundled inside the standalone executable.
 
 ## Run the tests
 
@@ -56,6 +56,8 @@ gui/
 examples/               sample graphs (JSON)
 tests/                  unit tests
 docs/                   report and screenshots
+dist/
+  MasonRouthSolver.exe  standalone Windows executable (no Python required)
 ```
 
 ## How to use
